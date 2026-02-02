@@ -1,13 +1,5 @@
-# --- Web Framework ---
-fastapi==0.109.0
-uvicorn[standard]==0.27.0
-pydantic==2.6.0
-
-# --- AI & LLM Integration ---
-openai==1.10.0
-google-generativeai==0.3.2
-
-# --- Utilities ---
-python-dotenv==1.0.1  # To read your .env file
-requests==2.31.0      # To make API calls if needed
-tiktoken==0.5.2       # Useful for counting tokens (costs)
+fastapi
+uvicorn
+requests
+python-dotenv
+pydantic
