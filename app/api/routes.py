@@ -1,13 +1,16 @@
 import os
 import requests
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Header
 from dotenv import load_dotenv
 
 from app.api.schemas import ChatRequest, ChatResponse, EngagementMetrics
 from app.core.extractor import extract_scam_intelligence
 
+# Load environment variables
 load_dotenv()
+
 API_KEY = os.getenv("GEMINI_API_KEY")
+EXPECTED_API_KEY = os.getenv("SUBMISSION_API_KEY")
 
 router = APIRouter()
 
@@ -24,16 +27,24 @@ MONEY_KEYWORDS = {
 }
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(payload: ChatRequest):
+async def chat_endpoint(
+    payload: ChatRequest,
+    x_api_key: str = Header(..., alias="x-api-key")
+):
+    # ---------- API KEY VALIDATION ----------
+    if x_api_key != EXPECTED_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API Key")
+
     if not payload.messages:
         raise HTTPException(status_code=400, detail="No messages provided")
 
+    # ---------- MESSAGE PROCESSING ----------
     last_message_raw = payload.messages[-1].content
     last_message = last_message_raw.lower()
 
     extracted_data = extract_scam_intelligence(last_message)
 
-    payment_detected = any(keyword in last_message for keyword in MONEY_KEYWORDS)
+    payment_detected = any(word in last_message for word in MONEY_KEYWORDS)
     bank_detected = "bank" in last_message or "account" in last_message
     otp_detected = "otp" in last_message or "verify" in last_message
     urgency_detected = "urgent" in last_message or "blocked" in last_message
@@ -46,9 +57,9 @@ async def chat_endpoint(payload: ChatRequest):
         or bool(extracted_data)
     )
 
-    # ---------------- RESPONSE LOGIC ----------------
+    # ---------- RESPONSE LOGIC ----------
 
-    # Case 1: Payment request → deterministic ₹20 verification
+    # Case 1: Payment scam → force ₹20 verification
     if payment_detected:
         reply_text = (
             "My GPay is not working properly at the moment. "
@@ -64,7 +75,7 @@ async def chat_endpoint(payload: ChatRequest):
             "I recently visited my branch regarding this."
         )
 
-    # Case 3: Other suspicious messages → LLM-assisted engagement
+    # Case 3: Other suspicious messages → Gemini-assisted engagement
     elif suspicious_detected and API_KEY:
         try:
             url = (
@@ -105,6 +116,7 @@ async def chat_endpoint(payload: ChatRequest):
     else:
         reply_text = "May I know who you are calling from?"
 
+    # ---------- RESPONSE ----------
     return ChatResponse(
         scam_detection_status="detected" if suspicious_detected else "safe",
         reply=reply_text,
